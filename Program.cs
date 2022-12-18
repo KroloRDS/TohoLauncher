@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using TohoLauncher;
 
+const string EOSD_KANJI = "東方紅魔郷";
 var settings = new LauncherSettings();
 var game = "";
 
@@ -42,13 +43,19 @@ string DetermineGame()
 	Console.Write("Checking game... ");
 
 	var files = Directory.GetFiles(Directory.GetCurrentDirectory());
-	var game = files.Select(x => Path.GetFileName(x))
-		.FirstOrDefault(x => Regex.IsMatch(x, @"^th\d{2,3}\.dat$"));
+	var fileNames = files.Select(x => Path.GetFileName(x));
+	var game = fileNames.FirstOrDefault(
+		x => Regex.IsMatch(x, @"^th\d{2,3}\.dat$"));
 
 	if (game is null)
-		throw new FileNotFoundException("Not a valid Toho game directory");
+	{
+		if (!fileNames.Any(x => x.StartsWith(EOSD_KANJI)))
+			throw new FileNotFoundException("Not a valid Toho game directory");
 
-	game = game[0..^4];
+		game = EOSD_KANJI;
+	}
+	else
+		game = game[0..^4];
 
 	Console.WriteLine("OK");
 	return game;
@@ -85,13 +92,15 @@ void LaunchThCrap()
 {
 	Console.WriteLine("Launching thcrap...");
 
-	CheckForPath(settings!.ThCrapPath, "thcrap");
-	if (string.IsNullOrEmpty(settings.ThCrapArg))
+	CheckForPath(settings?.ThCrapPath, "thcrap");
+	if (string.IsNullOrEmpty(settings?.ThCrapArg))
 	{
 		throw new ArgumentNullException("Missing parameter for thcrap");
 	}
 
-	Process.Start(settings.ThCrapPath!, settings.ThCrapArg + " " + game);
+	var arg = settings.ThCrapArg + " ";
+	arg += game == EOSD_KANJI ? "th06" : game;
+	Process.Start(settings.ThCrapPath!, arg);
 }
 
 void LaunchExe(string name)
@@ -101,8 +110,20 @@ void LaunchExe(string name)
 
 	if (!File.Exists(name))
 		throw new FileNotFoundException("Can't find " + name);
-	Process.Start(name);
-	return;
+	
+	if (game == EOSD_KANJI)
+		TryLaunchTroughLocale(name);
+	else
+		Process.Start(name);
+}
+
+void TryLaunchTroughLocale(string exe)
+{
+	var localePath = settings?.LocaleEmulatorPath;
+	if (localePath is null)
+		Process.Start(exe);
+	else
+		Process.Start(localePath, exe);
 }
 
 void CheckForPath(string? path, string name)
@@ -115,17 +136,37 @@ void CheckForPath(string? path, string name)
 
 void ApplyPrac()
 {
-	Console.WriteLine("Applying thprac, waiting for the game to launch...");
-	CheckForPath(settings.ThPracPath, "thprac");
+	var pracPath = settings?.ThPracPath;
+	CheckForPath(pracPath, "thprac");
 
-	while (true)
+	Console.WriteLine("Applying thprac, waiting for the game to launch...");
+	
+	if (!WaitForGameLaunch(10))
 	{
-		Thread.Sleep(500);
+		Console.WriteLine("Looks like the game is not launching properly.");
+		Console.WriteLine("Press any key to exit.");
+		Console.ReadKey();
+		return;
+	}
+
+	if (game == EOSD_KANJI)
+		TryLaunchTroughLocale(pracPath!);
+	else
+		Process.Start(pracPath!);
+}
+
+bool WaitForGameLaunch(int seconds)
+{
+	for (int i = 0; i < seconds; i++)
+	{
 		if (Process.GetProcessesByName(game).Any())
 		{
 			Thread.Sleep(1000);
-			Process.Start(settings!.ThPracPath!);
-			return;
+			return true;
 		}
+
+		Thread.Sleep(1000);
+		Console.WriteLine(".");
 	}
+	return false;
 }

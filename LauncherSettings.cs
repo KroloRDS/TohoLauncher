@@ -12,4 +12,5 @@ public class LauncherSettings
 	public bool UseVPatch { get; set; }
 
 	public bool SaveInGameFolder { get; set; }
+	public string? LocaleEmulatorPath { get; set; }
 }
