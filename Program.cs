@@ -1,20 +1,20 @@
-﻿using System.Diagnostics;
-using System.Text.Json;
-using System.Text.RegularExpressions;
+﻿using System.Text.Json;
 using TohoLauncher;
 
-const string EOSD_KANJI = "東方紅魔郷";
-var settings = new LauncherSettings();
-var game = "";
+Settings allSettings = new();
+
+Directory.SetCurrentDirectory("D:\\Toho\\TohoLauncher");
 
 try
 {
-	settings = ReadConfig();
-	game = DetermineGame();
+	ReadConfig();
+	var game = SelectGame();
+	var gameSettings = GetGameSettings(game);
+	var manager = new LaunchManager(
+		allSettings.GlobalSettings, gameSettings);
 
-	SetAppData();
-	Launch();
-	if (settings.UseThPrac) ApplyPrac();
+	
+	manager.Launch();
 }
 catch (Exception ex)
 {
@@ -23,150 +23,39 @@ catch (Exception ex)
 	Console.ReadKey();
 }
 
-LauncherSettings ReadConfig()
+void ReadConfig()
 {
 	Console.Write("Reading config... ");
 
 	var settingsFile = File.ReadAllText("TohoLauncherSettings.json");
-	var settings = JsonSerializer.Deserialize<LauncherSettings>(settingsFile);
-	if (settings is null)
-	{
+	allSettings = JsonSerializer.Deserialize<Settings>(settingsFile) ??
 		throw new Exception("Can't read config file");
-	}
 
 	Console.WriteLine("OK");
-	return settings;
 }
 
-string DetermineGame()
+string SelectGame()
 {
-	Console.Write("Checking game... ");
+	var gameNames = allSettings.GameSettings
+		.Where(x => x.GameName is not null)
+		.Select(x => x.GameName)
+		.ToArray();
+	if (!gameNames.Any()) throw new Exception("No games in config");
 
-	var files = Directory.GetFiles(Directory.GetCurrentDirectory());
-	var fileNames = files.Select(x => Path.GetFileName(x));
-	var game = fileNames.FirstOrDefault(
-		x => Regex.IsMatch(x, @"^th\d{2,3}\.dat$"));
-
-	if (game is null)
-	{
-		if (!fileNames.Any(x => x.StartsWith(EOSD_KANJI)))
-			throw new FileNotFoundException("Not a valid Toho game directory");
-
-		game = EOSD_KANJI;
-	}
-	else
-		game = game[0..^4];
-
-	Console.WriteLine("OK");
-	return game;
+	return Menu.Select(gameNames!);
 }
 
-
-void SetAppData()
+GameSettings GetGameSettings(string gameName)
 {
-	if (!settings.SaveInGameFolder) return;
-
-	Console.WriteLine("Setting save location to game folder...");
-	Environment.SetEnvironmentVariable(
-		"APPDATA", Directory.GetCurrentDirectory() + "/save");
-}
-
-void Launch()
-{
-	if (settings.UseThCrap)
-	{
-		LaunchThCrap();
-		return;
-	}
-
-	if (settings.UseVPatch)
-	{
-		LaunchExe("vpatch");
-		return;
-	}
-
-	LaunchExe(game);
-}
-
-void LaunchThCrap()
-{
-	Console.WriteLine("Launching thcrap...");
-
-	CheckForPath(settings?.ThCrapPath, "thcrap");
-	if (string.IsNullOrEmpty(settings?.ThCrapArg))
-	{
-		throw new ArgumentNullException("Missing parameter for thcrap");
-	}
-
-	var arg = settings.ThCrapArg + " ";
-	arg += game == EOSD_KANJI ? "th06" : game;
-	Process.Start(settings.ThCrapPath!, arg);
-}
-
-void LaunchExe(string name)
-{
-	name += ".exe";
-	Console.WriteLine("Launching " + name);
-
-	if (!File.Exists(name))
-		throw new FileNotFoundException("Can't find " + name);
+	var globalSettings = allSettings.GlobalSettings;
+	var gameSettings = allSettings.GameSettings
+		.First(x => x.GameName == gameName);
 	
-	if (game == EOSD_KANJI)
-		TryLaunchTroughLocale(name);
-	else
-		Process.Start(name);
-}
+	gameSettings.UseVPatch ??= globalSettings?.UseVPatch ?? false;
+	gameSettings.UseThPrac ??= globalSettings?.UseThPrac ?? false;
+	gameSettings.UseThCrap ??= globalSettings?.UseThCrap ?? false;
+	gameSettings.ThCrapArg ??= globalSettings?.ThCrapArg;
+	gameSettings.SaveInGameFolder ??= globalSettings?.SaveInGameFolder ?? false;
 
-void TryLaunchTroughLocale(string exe)
-{
-	var localePath = settings?.LocaleEmulatorPath;
-	if (localePath is null)
-		Process.Start(exe);
-	else
-		Process.Start(localePath, exe);
-}
-
-void CheckForPath(string? path, string name)
-{
-	if (string.IsNullOrEmpty(path))
-	{
-		throw new ArgumentNullException("Missing path for " + name);
-	}
-}
-
-void ApplyPrac()
-{
-	var pracPath = settings?.ThPracPath;
-	CheckForPath(pracPath, "thprac");
-
-	Console.WriteLine("Applying thprac, waiting for the game to launch...");
-	
-	if (!WaitForGameLaunch(10))
-	{
-		Console.WriteLine("Looks like the game is not launching properly.");
-		Console.WriteLine("Press any key to exit.");
-		Console.ReadKey();
-		return;
-	}
-
-	if (game == EOSD_KANJI)
-		TryLaunchTroughLocale(pracPath!);
-	else
-		Process.Start(pracPath!);
-}
-
-bool WaitForGameLaunch(int seconds)
-{
-	for (int i = 0; i < seconds; i++)
-	{
-		if (Process.GetProcessesByName(game).Any())
-		{
-			Thread.Sleep(1000);
-			return true;
-		}
-
-		Thread.Sleep(1000);
-		Console.WriteLine(".");
-	}
-	return false;
+	return gameSettings;
 }
