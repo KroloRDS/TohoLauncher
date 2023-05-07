@@ -140,15 +140,13 @@ public class LaunchManager
 
 	private bool WaitForGameLaunch(int seconds)
 	{
+		var procName = Game.Replace("tr", string.Empty);
 		for (int i = 0; i < seconds; i++)
 		{
-			if (Process.GetProcessesByName(Game).Any())
-			{
-				Thread.Sleep(1000);
-				return true;
-			}
-
 			Thread.Sleep(1000);
+			if (Process.GetProcessesByName(procName).Any())
+				return true;
+			
 			Console.WriteLine(".");
 		}
 		return false;
