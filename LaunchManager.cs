@@ -27,7 +27,7 @@ public class LaunchManager
 		var files = Directory.GetFiles(gamePath);
 		var fileNames = files.Select(x => Path.GetFileName(x));
 		var game = fileNames.FirstOrDefault(
-			x => Regex.IsMatch(x, @"^th\d{2,3}\.dat$"));
+			x => Regex.IsMatch(x, @"^th\d{2,3}(tr)?\.dat$"));
 
 		if (game is null)
 		{
