@@ -37,7 +37,7 @@ public class LaunchManager
 			game = EOSD_KANJI;
 		}
 		else
-			game = game[0..^4];
+			game = char.IsDigit(game[4]) ? game[0..5] : game[0..4];
 
 		Console.WriteLine("OK");
 		return game;
